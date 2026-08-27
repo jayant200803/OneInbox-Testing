@@ -59,29 +59,29 @@ def verify_token(
 # In-memory "database" of orders (demo — resets on restart)
 # ---------------------------------------------------------------------------
 ORDERS: dict[str, dict] = {
-    "ORD-1001": {
-        "order_number": "ORD-1001",
+    "1001": {
+        "order_number": "1001",
         "status": "shipped",
         "customer_name": "Jayant Raj",
         "item": "Wireless Headphones",
         "estimated_delivery": "2026-09-02",
     },
-    "ORD-1002": {
-        "order_number": "ORD-1002",
+    "1002": {
+        "order_number": "1002",
         "status": "processing",
         "customer_name": "Aisha Khan",
         "item": "Bluetooth Speaker",
         "estimated_delivery": "2026-09-05",
     },
-    "ORD-1003": {
-        "order_number": "ORD-1003",
+    "1003": {
+        "order_number": "1003",
         "status": "delivered",
         "customer_name": "Rohit Mehta",
         "item": "Smart Watch",
         "estimated_delivery": "2026-08-25",
     },
-    "ORD-1004": {
-        "order_number": "ORD-1004",
+    "1004": {
+        "order_number": "1004",
         "status": "cancelled",
         "customer_name": "Sara Lee",
         "item": "Laptop Stand",
@@ -103,7 +103,7 @@ def health():
 def get_order_status(order_number: str, _: None = Depends(verify_token)):
     """Return the status (and details) of an order by its order number.
     Requires a valid Bearer token in the Authorization header."""
-    order = ORDERS.get(order_number.upper())
+    order = ORDERS.get(order_number.strip())
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return order

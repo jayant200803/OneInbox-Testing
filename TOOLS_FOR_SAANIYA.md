@@ -28,11 +28,11 @@ Authorization: Bearer test-token-123
 ### 1. Get order status
 - **Call:** `GET /orders/{order_number}`
 - **Auth:** required (Bearer token)
-- **Example:** `GET /orders/ORD-1001`
+- **Example:** `GET /orders/1001`
 - **Returns:**
   ```json
   {
-    "order_number": "ORD-1001",
+    "order_number": "1001",
     "status": "shipped",
     "customer_name": "Jayant Raj",
     "item": "Wireless Headphones",
@@ -57,7 +57,7 @@ Authorization: Bearer test-token-123
 
 ```bash
 curl -H "Authorization: Bearer test-token-123" \
-  https://oneinbox-testing.onrender.com/orders/ORD-1001
+  https://oneinbox-testing.onrender.com/orders/1001
 ```
 
 ---
@@ -66,9 +66,9 @@ curl -H "Authorization: Bearer test-token-123" \
 
 | Order number | Status |
 |---|---|
-| `ORD-1001` | shipped |
-| `ORD-1002` | processing |
-| `ORD-1003` | delivered |
-| `ORD-1004` | cancelled |
+| `1001` | shipped |
+| `1002` | processing |
+| `1003` | delivered |
+| `1004` | cancelled |
 
 Storage is in-memory (demo) — it resets if the server restarts.

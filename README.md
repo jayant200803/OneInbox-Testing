@@ -38,7 +38,7 @@ uvicorn main:app --reload
 | GET | `/orders` | Bearer | List all orders |
 | GET | `/health` | none | Health check |
 
-Sample order numbers: `ORD-1001`, `ORD-1002`, `ORD-1003`, `ORD-1004`.
+Sample order numbers: `1001`, `1002`, `1003`, `1004`.
 
 ---
 
@@ -46,7 +46,7 @@ Sample order numbers: `ORD-1001`, `ORD-1002`, `ORD-1003`, `ORD-1004`.
 
 ```bash
 curl -H "Authorization: Bearer test-token-123" \
-  http://localhost:8000/orders/ORD-1001
+  http://localhost:8000/orders/1001
 ```
 
 ---
