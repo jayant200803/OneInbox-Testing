@@ -18,11 +18,12 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
+from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Path, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 app = FastAPI(
     title="Order Status API",
@@ -107,6 +108,19 @@ class OrderList(BaseModel):
     orders: list[Order]
 
 
+class NewOrder(BaseModel):
+    """Fields the caller provides to add a new order.
+    order_number is optional — if omitted, the API assigns the next number."""
+    customer_name: str = Field(..., examples=["Jayant Raj"])
+    item: str = Field(..., examples=["Wireless Headphones"])
+    status: str = Field("processing", examples=["processing"],
+                        description="shipped, processing, delivered, or cancelled")
+    estimated_delivery: str = Field("N/A", examples=["2026-09-10"])
+    order_number: Optional[str] = Field(
+        None, description="Optional. If omitted, the next number is assigned.",
+        examples=["1005"])
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -175,3 +189,33 @@ def list_orders(_: None = Depends(verify_token)):
             for order in ORDERS.values()
         ]
     }
+
+
+@app.post("/orders", response_model=Order, status_code=201,
+          summary="Add a new order", tags=["orders"])
+def create_order(new: NewOrder, _: None = Depends(verify_token)):
+    """Add a new order. Use this when the caller wants to place/add an order.
+    Provide customer_name and item (status and estimated_delivery are optional).
+    Requires a valid Bearer token. Returns the created order with its number."""
+    # Assign an order number if one wasn't provided.
+    if new.order_number:
+        order_number = new.order_number.strip()
+    else:
+        next_num = max((int(n) for n in ORDERS if n.isdigit()), default=1000) + 1
+        order_number = str(next_num)
+
+    if order_number in ORDERS:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Order {order_number} already exists.",
+        )
+
+    order = {
+        "order_number": order_number,
+        "status": new.status,
+        "customer_name": new.customer_name,
+        "item": new.item,
+        "estimated_delivery": new.estimated_delivery,
+    }
+    ORDERS[order_number] = order
+    return {**order, "message": _spoken_message(order)}
