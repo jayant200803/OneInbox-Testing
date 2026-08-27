@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Path, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -100,7 +100,14 @@ def health():
 
 
 @app.get("/orders/{order_number}", summary="Get order status", tags=["orders"])
-def get_order_status(order_number: str, _: None = Depends(verify_token)):
+def get_order_status(
+    order_number: str = Path(
+        ...,
+        description="The order number the caller provides, e.g. 1001",
+        examples=["1001"],
+    ),
+    _: None = Depends(verify_token),
+):
     """Return the status (and details) of an order by its order number.
     Requires a valid Bearer token in the Authorization header."""
     order = ORDERS.get(order_number.strip())
