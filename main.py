@@ -195,6 +195,32 @@ def list_orders(_: None = Depends(verify_token)):
     }
 
 
+# Request-body examples so Swagger UI shows an editable body box for these
+# endpoints (needed because we read the raw request instead of a typed model).
+_FULL_ORDER_EXAMPLE = {
+    "customer_name": "Neha Sharma",
+    "item": "Gaming Mouse",
+    "quantity": 2,
+    "total_amount": "15000",
+    "status": "pending",
+}
+_PARTIAL_ORDER_EXAMPLE = {"status": "delivered", "quantity": 3}
+
+
+def _body_schema(example: dict) -> dict:
+    return {
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {"type": "object"},
+                    "example": example,
+                }
+            },
+        }
+    }
+
+
 async def _read_body(request: Request) -> dict:
     """Read the JSON body, tolerating clients that send it as a quoted string
     (double-encoded) and total_amount as a number or a string."""
@@ -213,7 +239,8 @@ async def _read_body(request: Request) -> dict:
 
 
 @app.post("/api/public/orders", response_model=Order, status_code=201,
-          summary="Create a new order", tags=["orders"])
+          summary="Create a new order", tags=["orders"],
+          openapi_extra=_body_schema(_FULL_ORDER_EXAMPLE))
 async def create_order(request: Request, _: None = Depends(verify_token)):
     """Create a new order. Use this when the user wants to place or create an order.
     Required fields: customer_name, item, quantity, total_amount.
@@ -258,7 +285,8 @@ UPDATABLE_FIELDS = {
 
 
 @app.patch("/api/public/orders/{order_number}", response_model=Order,
-           summary="Update part of an order", tags=["orders"])
+           summary="Update part of an order", tags=["orders"],
+           openapi_extra=_body_schema(_PARTIAL_ORDER_EXAMPLE))
 async def update_order(
     request: Request,
     order_number: str = Path(..., examples=["1001"]),
@@ -277,7 +305,8 @@ async def update_order(
 
 
 @app.put("/api/public/orders/{order_number}", response_model=Order,
-         summary="Replace an entire order", tags=["orders"])
+         summary="Replace an entire order", tags=["orders"],
+         openapi_extra=_body_schema(_FULL_ORDER_EXAMPLE))
 async def replace_order(
     request: Request,
     order_number: str = Path(..., examples=["1001"]),
