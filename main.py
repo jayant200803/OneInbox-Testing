@@ -16,14 +16,15 @@ Auth:
 """
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Path, status
+from fastapi import Depends, FastAPI, HTTPException, Path, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 app = FastAPI(
     title="Order Status API",
@@ -196,11 +197,22 @@ def list_orders(_: None = Depends(verify_token)):
 
 @app.post("/api/public/orders", response_model=Order, status_code=201,
           summary="Create a new order", tags=["orders"])
-def create_order(new: NewOrder, _: None = Depends(verify_token)):
+async def create_order(request: Request, _: None = Depends(verify_token)):
     """Create a new order. Use this when the user wants to place or create an order.
     Required fields: customer_name, item, quantity, total_amount.
     Optional: status (default 'pending').
     Requires a valid Bearer token. Returns the created order with its number and status."""
+    # Read the raw body so we tolerate clients that send the JSON as a string
+    # (double-encoded) instead of a proper JSON object.
+    raw = await request.body()
+    try:
+        data = json.loads(raw or b"{}")
+        # Some platforms send the JSON wrapped in quotes -> a string. Decode again.
+        if isinstance(data, str):
+            data = json.loads(data)
+        new = NewOrder(**data)
+    except (json.JSONDecodeError, TypeError, ValidationError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid request body: {exc}")
     # Assign an order number if one wasn't provided.
     if new.order_number:
         order_number = new.order_number.strip()
