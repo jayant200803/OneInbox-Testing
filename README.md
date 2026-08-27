@@ -37,6 +37,9 @@ uvicorn main:app --reload
 | GET | `/orders/{order_number}` | Bearer | Get an order's status |
 | GET | `/orders` | Bearer | List all orders |
 | POST | `/api/public/orders` | Bearer | Create a new order |
+| PATCH | `/api/public/orders/{order_number}` | Bearer | Update part of an order |
+| PUT | `/api/public/orders/{order_number}` | Bearer | Replace the whole order |
+| DELETE | `/api/public/orders/{order_number}` | Bearer | Delete an order |
 | GET | `/health` | none | Health check |
 
 Create an order (POST body):

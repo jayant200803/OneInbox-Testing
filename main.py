@@ -195,6 +195,23 @@ def list_orders(_: None = Depends(verify_token)):
     }
 
 
+async def _read_body(request: Request) -> dict:
+    """Read the JSON body, tolerating clients that send it as a quoted string
+    (double-encoded) and total_amount as a number or a string."""
+    raw = await request.body()
+    try:
+        data = json.loads(raw or b"{}")
+        if isinstance(data, str):
+            data = json.loads(data)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid JSON body: {exc}")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=422, detail="Body must be a JSON object")
+    if "total_amount" in data:
+        data["total_amount"] = str(data["total_amount"])
+    return data
+
+
 @app.post("/api/public/orders", response_model=Order, status_code=201,
           summary="Create a new order", tags=["orders"])
 async def create_order(request: Request, _: None = Depends(verify_token)):
@@ -202,19 +219,10 @@ async def create_order(request: Request, _: None = Depends(verify_token)):
     Required fields: customer_name, item, quantity, total_amount.
     Optional: status (default 'pending').
     Requires a valid Bearer token. Returns the created order with its number and status."""
-    # Read the raw body so we tolerate clients that send the JSON as a string
-    # (double-encoded) instead of a proper JSON object.
-    raw = await request.body()
+    data = await _read_body(request)
     try:
-        data = json.loads(raw or b"{}")
-        # Some platforms send the JSON wrapped in quotes -> a string. Decode again.
-        if isinstance(data, str):
-            data = json.loads(data)
-        # Accept total_amount as a number or a string (e.g. 15000 or "15000 rupees").
-        if isinstance(data, dict) and "total_amount" in data:
-            data["total_amount"] = str(data["total_amount"])
         new = NewOrder(**data)
-    except (json.JSONDecodeError, TypeError, ValidationError) as exc:
+    except (TypeError, ValidationError) as exc:
         raise HTTPException(status_code=422, detail=f"Invalid request body: {exc}")
     # Assign an order number if one wasn't provided.
     if new.order_number:
@@ -240,3 +248,75 @@ async def create_order(request: Request, _: None = Depends(verify_token)):
     }
     ORDERS[order_number] = order
     return {**order, "message": _spoken_message(order)}
+
+
+# Fields that may be updated on an order.
+UPDATABLE_FIELDS = {
+    "status", "customer_name", "item", "quantity",
+    "total_amount", "estimated_delivery",
+}
+
+
+@app.patch("/api/public/orders/{order_number}", response_model=Order,
+           summary="Update part of an order", tags=["orders"])
+async def update_order(
+    request: Request,
+    order_number: str = Path(..., examples=["1001"]),
+    _: None = Depends(verify_token),
+):
+    """Update one or more fields of an existing order (status, item, quantity, etc.).
+    Only the fields you send are changed. Requires a valid Bearer token."""
+    order = ORDERS.get(order_number.strip())
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    data = await _read_body(request)
+    for key, value in data.items():
+        if key in UPDATABLE_FIELDS:
+            order[key] = value
+    return {**order, "message": _spoken_message(order)}
+
+
+@app.put("/api/public/orders/{order_number}", response_model=Order,
+         summary="Replace an entire order", tags=["orders"])
+async def replace_order(
+    request: Request,
+    order_number: str = Path(..., examples=["1001"]),
+    _: None = Depends(verify_token),
+):
+    """Replace the whole order with the fields you send.
+    Required fields: customer_name, item, quantity, total_amount.
+    Requires a valid Bearer token."""
+    if order_number.strip() not in ORDERS:
+        raise HTTPException(status_code=404, detail="Order not found")
+    data = await _read_body(request)
+    try:
+        new = NewOrder(**data)
+    except (TypeError, ValidationError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid request body: {exc}")
+    order = {
+        "order_number": order_number.strip(),
+        "status": new.status,
+        "customer_name": new.customer_name,
+        "item": new.item,
+        "quantity": new.quantity,
+        "total_amount": new.total_amount,
+        "estimated_delivery": new.estimated_delivery,
+    }
+    ORDERS[order_number.strip()] = order
+    return {**order, "message": _spoken_message(order)}
+
+
+@app.delete("/api/public/orders/{order_number}",
+            summary="Delete an order", tags=["orders"])
+def delete_order(
+    order_number: str = Path(..., examples=["1001"]),
+    _: None = Depends(verify_token),
+):
+    """Remove an order by its order number. Requires a valid Bearer token."""
+    order = ORDERS.pop(order_number.strip(), None)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return {
+        "order_number": order_number.strip(),
+        "message": f"Order {order_number.strip()} has been deleted.",
+    }
