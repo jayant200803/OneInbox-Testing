@@ -22,6 +22,7 @@ from datetime import datetime
 from fastapi import Depends, FastAPI, HTTPException, Path, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel
 
 app = FastAPI(
     title="Order Status API",
@@ -85,9 +86,25 @@ ORDERS: dict[str, dict] = {
         "status": "cancelled",
         "customer_name": "Sara Lee",
         "item": "Laptop Stand",
-        "estimated_delivery": None,
+        "estimated_delivery": "N/A",
     },
 }
+
+
+# ---------------------------------------------------------------------------
+# Response schema (so the agent platform reliably sees every field)
+# ---------------------------------------------------------------------------
+class Order(BaseModel):
+    order_number: str
+    status: str
+    customer_name: str
+    item: str
+    estimated_delivery: str
+    message: str
+
+
+class OrderList(BaseModel):
+    orders: list[Order]
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +116,8 @@ def health():
     return {"status": "ok", "time": datetime.utcnow().isoformat()}
 
 
-@app.get("/orders/{order_number}", summary="Get order status", tags=["orders"])
+@app.get("/orders/{order_number}", response_model=Order,
+         summary="Get order status", tags=["orders"])
 def get_order_status(
     order_number: str = Path(
         ...,
@@ -145,7 +163,8 @@ def _spoken_message(order: dict) -> str:
     return f"Your order {num} for the {item} is currently {status}."
 
 
-@app.get("/orders", summary="List all orders", tags=["orders"])
+@app.get("/orders", response_model=OrderList,
+         summary="List all orders", tags=["orders"])
 def list_orders(_: None = Depends(verify_token)):
     """Return ALL orders in one call, each with a ready-to-read message.
     The voice agent fetches this once and reads back whichever order the
