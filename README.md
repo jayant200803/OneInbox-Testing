@@ -1,21 +1,20 @@
-# BrightSmile Dental — Sample Appointment API
+# Order Status API
 
-A small FastAPI service that a **Voice AI agent** can call as **tools** during a
-live call. Sample business: a dental clinic. The agent can check availability,
-book, look up, reschedule, and cancel appointments, and list services.
-
-Built by Jayant Raj as the API for the voice-agent tools demo.
+A small FastAPI service to look up an order's status by its order number,
+protected with a **Bearer token**.
 
 ---
 
-## What this is for
+## Authentication
 
-The voice agent needs real functions to *do* things on a call ("book me a
-cleaning Thursday at 10"). Each endpoint here is one such tool. The agent
-platform imports the OpenAPI spec (`/openapi.json`) and calls these endpoints
-during the conversation.
+All `/orders` endpoints require a Bearer token in the `Authorization` header:
 
-Storage is in-memory (resets on restart) — this is a demo, no database needed.
+```
+Authorization: Bearer test-token-123
+```
+
+The token is read from the `API_TOKEN` environment variable (default
+`test-token-123` if unset). Missing/wrong token returns HTTP 401.
 
 ---
 
@@ -26,51 +25,42 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
-- Interactive docs (try each endpoint): http://localhost:8000/docs
-- OpenAPI spec (for the agent platform): http://localhost:8000/openapi.json
+- Interactive docs: http://localhost:8000/docs
+- OpenAPI spec: http://localhost:8000/openapi.json
 
 ---
 
-## Deploy (so the AI can reach it over the internet)
+## Endpoints
 
-The agent calls this over the internet, so it can't be localhost. Easiest free
-options:
+| Method | Path | Auth | What it does |
+|---|---|---|---|
+| GET | `/orders/{order_number}` | Bearer | Get an order's status |
+| GET | `/orders` | Bearer | List all orders |
+| GET | `/health` | none | Health check |
 
-**Render (recommended)** — this repo already has `render.yaml`:
-1. Push this folder to a GitHub repo.
-2. Go to render.com → New → Web Service → connect the repo.
-3. It auto-detects `render.yaml`. Click deploy.
-4. You get a public URL like `https://brightsmile-dental-api.onrender.com`.
+Sample order numbers: `ORD-1001`, `ORD-1002`, `ORD-1003`, `ORD-1004`.
 
-**Railway / Fly.io** — similar; a `Procfile` is included.
+---
 
-**Quick temporary URL (for testing only)** — run locally then:
+## Quick test
+
 ```bash
-npx ngrok http 8000       # gives a temporary public https URL
+curl -H "Authorization: Bearer test-token-123" \
+  http://localhost:8000/orders/ORD-1001
 ```
 
 ---
 
-## Endpoints (each = one agent tool)
+## Deploy (Render)
 
-| Method | Path | What it does |
-|---|---|---|
-| GET | `/services` | List services and prices |
-| GET | `/availability?date=YYYY-MM-DD` | Free slots on a date |
-| POST | `/appointments` | Book a new appointment |
-| GET | `/appointments/{id}` | Look up an appointment |
-| PUT | `/appointments/{id}` | Reschedule |
-| DELETE | `/appointments/{id}` | Cancel |
-| GET | `/health` | Health check |
+This repo includes `render.yaml`, `Procfile`, and `.python-version`.
 
-See `TOOLS_FOR_SAANIYA.md` for the function-calling descriptions to give the
-agent.
+1. Push to GitHub.
+2. render.com → New → Web Service → connect the repo.
+3. Build: `pip install -r requirements.txt`
+4. Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 
----
+To change the token in production, set an `API_TOKEN` environment variable in
+the Render dashboard.
 
-## What to hand over
-
-Send Saaniya:
-1. The deployed base URL (e.g. `https://...onrender.com`)
-2. The link `<base-url>/openapi.json`
-3. `TOOLS_FOR_SAANIYA.md` (the tool descriptions)
+Storage is in-memory (demo) — it resets on restart.

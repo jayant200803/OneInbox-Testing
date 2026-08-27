@@ -1,63 +1,74 @@
-# Tools for the Voice Agent — BrightSmile Dental API
+# Order Status API
 
-Hi Saaniya — this is the sample API for the voice agent to call during a call.
 Base URL (deployed): **`https://oneinbox-testing.onrender.com`**
 Import spec directly from: **`https://oneinbox-testing.onrender.com/openapi.json`**
+Interactive docs: **`https://oneinbox-testing.onrender.com/docs`**
 
-Below is each tool with the exact info the agent needs (name, when to use it,
-method, path, parameters, and an example). All requests/responses are JSON.
+Look up an order's status by its order number. All order endpoints require a
+**Bearer token** in the `Authorization` header.
 
 ---
 
-### 1. list_services
-- **When to use:** caller asks what treatments are offered or how much they cost.
-- **Call:** `GET /services`
-- **Params:** none
-- **Returns:** services with duration and price.
+## Authentication
 
-### 2. check_availability
-- **When to use:** caller asks what times are open on a given day.
-- **Call:** `GET /availability?date=YYYY-MM-DD`
-- **Params:** `date` (string, YYYY-MM-DD, required)
-- **Example:** `GET /availability?date=2026-09-01`
-- **Returns:** `{ "date": "...", "available_slots": ["09:00","11:00", ...] }`
+Every request to an `/orders` endpoint must include this header:
 
-### 3. book_appointment
-- **When to use:** once you have the patient's name, phone, service, date and time.
-- **Call:** `POST /appointments`
-- **Body (JSON):**
+```
+Authorization: Bearer test-token-123
+```
+
+- Default token: **`test-token-123`**
+- Missing or wrong token → HTTP `401 Unauthorized`.
+- (The token can be changed on the server via the `API_TOKEN` environment variable.)
+
+---
+
+## Endpoints
+
+### 1. Get order status
+- **Call:** `GET /orders/{order_number}`
+- **Auth:** required (Bearer token)
+- **Example:** `GET /orders/ORD-1001`
+- **Returns:**
   ```json
   {
-    "patient_name": "Jayant Raj",
-    "phone": "+919508509567",
-    "service": "cleaning",
-    "date": "2026-09-01",
-    "time": "10:00"
+    "order_number": "ORD-1001",
+    "status": "shipped",
+    "customer_name": "Jayant Raj",
+    "item": "Wireless Headphones",
+    "estimated_delivery": "2026-09-02"
   }
   ```
-- **service** must be one of: `cleaning`, `checkup`, `whitening`, `filling`
-- **Returns:** the appointment including `appointment_id` (tell the caller to keep it).
+- Unknown order → HTTP `404`.
 
-### 4. get_appointment
-- **When to use:** caller wants to confirm/check an existing booking.
-- **Call:** `GET /appointments/{appointment_id}`
-- **Example:** `GET /appointments/APT-C65551`
+### 2. List all orders
+- **Call:** `GET /orders`
+- **Auth:** required (Bearer token)
+- **Returns:** `{ "orders": [ ... ] }`
 
-### 5. reschedule_appointment
-- **When to use:** caller wants to move their booking to a different slot.
-- **Call:** `PUT /appointments/{appointment_id}`
-- **Body (JSON):** `{ "date": "2026-09-02", "time": "14:00" }`
-
-### 6. cancel_appointment
-- **When to use:** caller wants to cancel their booking.
-- **Call:** `DELETE /appointments/{appointment_id}`
+### 3. Health check
+- **Call:** `GET /health`
+- **Auth:** not required
+- **Returns:** `{ "status": "ok", "time": "..." }`
 
 ---
 
-### Notes
-- Valid time slots: `09:00, 10:00, 11:00, 14:00, 15:00, 16:00`.
-- Booking a taken slot returns HTTP 409; unknown appointment returns 404.
-- Storage is in-memory (demo) — it resets if the server restarts.
-- CORS is open, so browser/demo clients can call it freely.
+## Quick test (curl)
 
-Any questions on the API, ping me. — Jayant
+```bash
+curl -H "Authorization: Bearer test-token-123" \
+  https://oneinbox-testing.onrender.com/orders/ORD-1001
+```
+
+---
+
+## Sample order numbers (demo data)
+
+| Order number | Status |
+|---|---|
+| `ORD-1001` | shipped |
+| `ORD-1002` | processing |
+| `ORD-1003` | delivered |
+| `ORD-1004` | cancelled |
+
+Storage is in-memory (demo) — it resets if the server restarts.
