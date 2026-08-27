@@ -109,6 +109,7 @@ class Order(BaseModel):
 
 class OrderList(BaseModel):
     orders: list[Order]
+    count: int = 0
 
 
 class NewOrder(BaseModel):
@@ -183,15 +184,18 @@ def _spoken_message(order: dict) -> str:
 
 @app.get("/orders", response_model=OrderList,
          summary="List all orders", tags=["orders"])
+@app.get("/api/public/orders", response_model=OrderList,
+         summary="List all orders", tags=["orders"])
 def list_orders(_: None = Depends(verify_token)):
     """Return ALL orders in one call, each with a ready-to-read message.
-    The voice agent fetches this once and reads back whichever order the
-    caller asks about. Requires a valid Bearer token."""
+    Use this to see everything available and pick one — no need to know a
+    specific order number first. Requires a valid Bearer token."""
     return {
         "orders": [
             {**order, "message": _spoken_message(order)}
             for order in ORDERS.values()
-        ]
+        ],
+        "count": len(ORDERS),
     }
 
 
