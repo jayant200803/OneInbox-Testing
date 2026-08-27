@@ -100,7 +100,9 @@ class Order(BaseModel):
     status: str
     customer_name: str
     item: str
-    estimated_delivery: str
+    quantity: int = 1
+    total_amount: float = 0.0
+    estimated_delivery: str = "N/A"
     message: str
 
 
@@ -109,12 +111,13 @@ class OrderList(BaseModel):
 
 
 class NewOrder(BaseModel):
-    """Fields the caller provides to add a new order.
-    order_number is optional — if omitted, the API assigns the next number."""
+    """Fields the caller provides to create a new order."""
     customer_name: str = Field(..., examples=["Jayant Raj"])
     item: str = Field(..., examples=["Wireless Headphones"])
-    status: str = Field("processing", examples=["processing"],
-                        description="shipped, processing, delivered, or cancelled")
+    quantity: int = Field(..., examples=[1])
+    total_amount: float = Field(..., examples=[79.99])
+    status: str = Field("pending", examples=["pending"],
+                        description="Order status. Defaults to 'pending'.")
     estimated_delivery: str = Field("N/A", examples=["2026-09-10"])
     order_number: Optional[str] = Field(
         None, description="Optional. If omitted, the next number is assigned.",
@@ -191,12 +194,13 @@ def list_orders(_: None = Depends(verify_token)):
     }
 
 
-@app.post("/orders", response_model=Order, status_code=201,
-          summary="Add a new order", tags=["orders"])
+@app.post("/api/public/orders", response_model=Order, status_code=201,
+          summary="Create a new order", tags=["orders"])
 def create_order(new: NewOrder, _: None = Depends(verify_token)):
-    """Add a new order. Use this when the caller wants to place/add an order.
-    Provide customer_name and item (status and estimated_delivery are optional).
-    Requires a valid Bearer token. Returns the created order with its number."""
+    """Create a new order. Use this when the user wants to place or create an order.
+    Required fields: customer_name, item, quantity, total_amount.
+    Optional: status (default 'pending').
+    Requires a valid Bearer token. Returns the created order with its number and status."""
     # Assign an order number if one wasn't provided.
     if new.order_number:
         order_number = new.order_number.strip()
@@ -215,6 +219,8 @@ def create_order(new: NewOrder, _: None = Depends(verify_token)):
         "status": new.status,
         "customer_name": new.customer_name,
         "item": new.item,
+        "quantity": new.quantity,
+        "total_amount": new.total_amount,
         "estimated_delivery": new.estimated_delivery,
     }
     ORDERS[order_number] = order

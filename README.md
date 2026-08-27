@@ -36,21 +36,24 @@ uvicorn main:app --reload
 |---|---|---|---|
 | GET | `/orders/{order_number}` | Bearer | Get an order's status |
 | GET | `/orders` | Bearer | List all orders |
-| POST | `/orders` | Bearer | Add a new order |
+| POST | `/api/public/orders` | Bearer | Create a new order |
 | GET | `/health` | none | Health check |
 
-Add an order (POST body):
+Create an order (POST body):
 
 ```json
 {
   "customer_name": "Neha Sharma",
   "item": "Gaming Mouse",
-  "status": "processing",
-  "estimated_delivery": "2026-09-12"
+  "quantity": 2,
+  "total_amount": 49.98,
+  "status": "pending"
 }
 ```
 
-`order_number` is optional — if omitted, the next number is assigned automatically.
+Required: `customer_name`, `item`, `quantity`, `total_amount`. Optional: `status`
+(default `pending`). `order_number` is optional — if omitted, the next number is
+assigned automatically.
 
 Sample order numbers: `1001`, `1002`, `1003`, `1004`.
 
