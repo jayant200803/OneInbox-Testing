@@ -112,8 +112,37 @@ def get_order_status(
     Requires a valid Bearer token in the Authorization header."""
     order = ORDERS.get(order_number.strip())
     if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    return order
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Sorry, I couldn't find any order with the number {order_number}. "
+                "Please double-check the order number."
+            ),
+        )
+    return {**order, "message": _spoken_message(order)}
+
+
+def _spoken_message(order: dict) -> str:
+    """Build a natural, ready-to-read-aloud sentence for the voice agent."""
+    num = order["order_number"]
+    status = order["status"]
+    item = order["item"]
+    eta = order["estimated_delivery"]
+    if status == "shipped":
+        return (
+            f"Your order {num} for the {item} has shipped "
+            f"and is expected to arrive by {eta}."
+        )
+    if status == "processing":
+        return (
+            f"Your order {num} for the {item} is currently being processed "
+            f"and is expected to arrive by {eta}."
+        )
+    if status == "delivered":
+        return f"Your order {num} for the {item} was delivered on {eta}."
+    if status == "cancelled":
+        return f"Your order {num} for the {item} has been cancelled."
+    return f"Your order {num} for the {item} is currently {status}."
 
 
 @app.get("/orders", summary="List all orders", tags=["orders"])
