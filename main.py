@@ -102,7 +102,7 @@ class Order(BaseModel):
     customer_name: str
     item: str
     quantity: int = 1
-    total_amount: float = 0.0
+    total_amount: str = "0"
     estimated_delivery: str = "N/A"
     message: str
 
@@ -116,7 +116,7 @@ class NewOrder(BaseModel):
     customer_name: str = Field(..., examples=["Jayant Raj"])
     item: str = Field(..., examples=["Wireless Headphones"])
     quantity: int = Field(..., examples=[1])
-    total_amount: float = Field(..., examples=[79.99])
+    total_amount: str = Field(..., examples=["15000"])
     status: str = Field("pending", examples=["pending"],
                         description="Order status. Defaults to 'pending'.")
     estimated_delivery: str = Field("N/A", examples=["2026-09-10"])
@@ -210,6 +210,9 @@ async def create_order(request: Request, _: None = Depends(verify_token)):
         # Some platforms send the JSON wrapped in quotes -> a string. Decode again.
         if isinstance(data, str):
             data = json.loads(data)
+        # Accept total_amount as a number or a string (e.g. 15000 or "15000 rupees").
+        if isinstance(data, dict) and "total_amount" in data:
+            data["total_amount"] = str(data["total_amount"])
         new = NewOrder(**data)
     except (json.JSONDecodeError, TypeError, ValidationError) as exc:
         raise HTTPException(status_code=422, detail=f"Invalid request body: {exc}")
