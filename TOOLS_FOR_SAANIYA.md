@@ -1,8 +1,8 @@
 # Tools for the Voice Agent — BrightSmile Dental API
 
 Hi Saaniya — this is the sample API for the voice agent to call during a call.
-Base URL (once deployed): **`<PASTE_DEPLOYED_URL_HERE>`**
-Import spec directly from: **`<BASE_URL>/openapi.json`**
+Base URL (deployed): **`https://oneinbox-testing.onrender.com`**
+Import spec directly from: **`https://oneinbox-testing.onrender.com/openapi.json`**
 
 Below is each tool with the exact info the agent needs (name, when to use it,
 method, path, parameters, and an example). All requests/responses are JSON.
