@@ -26,7 +26,6 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import Integer, String, create_engine, select
@@ -253,13 +252,6 @@ def health():
     return {"status": "ok", "time": datetime.utcnow().isoformat()}
 
 
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
-def dashboard():
-    """A live dashboard that auto-refreshes and shows all orders in real time,
-    so you can watch statuses change without calling the API manually."""
-    return DASHBOARD_HTML.replace("__API_TOKEN__", API_TOKEN)
-
-
 @app.get("/orders", response_model=OrderList,
          summary="List all orders", tags=["orders"])
 @app.get("/api/public/orders", response_model=OrderList,
@@ -416,104 +408,3 @@ def delete_order(
         "order_number": order_number.strip(),
         "message": f"Order {order_number.strip()} has been deleted.",
     }
-
-
-# ---------------------------------------------------------------------------
-# Live dashboard (auto-refreshing HTML page at "/")
-# ---------------------------------------------------------------------------
-DASHBOARD_HTML = r"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Orders — Live Dashboard</title>
-<style>
-  :root { color-scheme: light dark; }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    background: #0f172a; color: #e2e8f0; padding: 24px;
-  }
-  .wrap { max-width: 1100px; margin: 0 auto; }
-  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
-  h1 { font-size: 22px; margin: 0; }
-  .meta { font-size: 13px; color: #94a3b8; display: flex; align-items: center; gap: 12px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; display: inline-block; animation: pulse 1.6s infinite; }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
-  .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
-  .stat { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 12px 16px; min-width: 120px; }
-  .stat b { display: block; font-size: 24px; }
-  .stat span { font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; }
-  table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 12px; overflow: hidden; }
-  th, td { padding: 12px 14px; text-align: left; font-size: 14px; border-bottom: 1px solid #334155; }
-  th { background: #172033; color: #94a3b8; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
-  tr:last-child td { border-bottom: none; }
-  .badge { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: capitalize; }
-  .shipped { background: #1d4ed833; color: #93c5fd; }
-  .processing { background: #ca8a0433; color: #fde68a; }
-  .pending { background: #64748b33; color: #cbd5e1; }
-  .delivered { background: #15803d33; color: #86efac; }
-  .cancelled { background: #b91c1c33; color: #fca5a5; }
-  .flash { animation: flash 1.2s ease; }
-  @keyframes flash { from { background: #22c55e44; } to { background: transparent; } }
-  .err { color: #fca5a5; font-size: 13px; }
-  footer { margin-top: 16px; font-size: 12px; color: #64748b; }
-</style>
-</head>
-<body>
-<div class="wrap">
-  <header>
-    <h1>📦 Orders — Live Dashboard</h1>
-    <div class="meta"><span class="dot"></span> <span id="status">connecting…</span></div>
-  </header>
-  <div class="stats" id="stats"></div>
-  <table>
-    <thead>
-      <tr><th>Order #</th><th>Customer</th><th>Item</th><th>Qty</th><th>Amount</th><th>Status</th><th>Est. Delivery</th></tr>
-    </thead>
-    <tbody id="rows"><tr><td colspan="7">Loading…</td></tr></tbody>
-  </table>
-  <footer>Auto-refreshes every 4 seconds. No manual testing needed — changes appear here automatically.</footer>
-</div>
-<script>
-  const TOKEN = "__API_TOKEN__";
-  let prev = {};
-  function badge(s){ return '<span class="badge '+ (s||'').toLowerCase() +'">'+ (s||'') +'</span>'; }
-  async function load(){
-    try {
-      const res = await fetch('/api/public/orders', { headers: { 'Authorization': 'Bearer ' + TOKEN } });
-      if(!res.ok){ throw new Error('HTTP ' + res.status); }
-      const data = await res.json();
-      const orders = data.orders || [];
-      const counts = { shipped:0, processing:0, pending:0, delivered:0, cancelled:0 };
-      orders.forEach(o => { if(counts[o.status] !== undefined) counts[o.status]++; });
-      document.getElementById('stats').innerHTML =
-        '<div class="stat"><b>'+ (data.count ?? orders.length) +'</b><span>Total Orders</span></div>' +
-        '<div class="stat"><b>'+ counts.processing +'</b><span>Processing</span></div>' +
-        '<div class="stat"><b>'+ counts.shipped +'</b><span>Shipped</span></div>' +
-        '<div class="stat"><b>'+ counts.delivered +'</b><span>Delivered</span></div>';
-      document.getElementById('rows').innerHTML = orders.map(o => {
-        const sig = JSON.stringify(o);
-        const changed = prev[o.order_number] && prev[o.order_number] !== sig;
-        return '<tr class="'+ (changed ? 'flash' : '') +'">'+
-          '<td>'+ o.order_number +'</td>'+
-          '<td>'+ o.customer_name +'</td>'+
-          '<td>'+ o.item +'</td>'+
-          '<td>'+ o.quantity +'</td>'+
-          '<td>'+ o.total_amount +'</td>'+
-          '<td>'+ badge(o.status) +'</td>'+
-          '<td>'+ o.estimated_delivery +'</td>'+
-        '</tr>';
-      }).join('') || '<tr><td colspan="7">No orders yet.</td></tr>';
-      prev = {}; orders.forEach(o => prev[o.order_number] = JSON.stringify(o));
-      const t = new Date().toLocaleTimeString();
-      document.getElementById('status').textContent = 'Live · updated ' + t;
-    } catch(e){
-      document.getElementById('status').innerHTML = '<span class="err">error: '+ e.message +'</span>';
-    }
-  }
-  load();
-  setInterval(load, 4000);
-</script>
-</body>
-</html>"""
