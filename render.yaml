@@ -1,7 +1,16 @@
 services:
   - type: web
-    name: brightsmile-dental-api
+    name: oneinbox-testing
     runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: oneinbox-orders-db
+          property: connectionString
+
+databases:
+  - name: oneinbox-orders-db
     plan: free
