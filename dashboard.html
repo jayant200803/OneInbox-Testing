@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Orders — Live Dashboard</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0f172a; color: #e2e8f0; padding: 24px;
+  }
+  .wrap { max-width: 1150px; margin: 0 auto; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0; }
+  .meta { font-size: 13px; color: #94a3b8; display: flex; align-items: center; gap: 10px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #22c55e; display: inline-block; animation: pulse 1.6s infinite; }
+  .dot.off { background: #ef4444; animation: none; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .stat { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 12px 18px; min-width: 130px; }
+  .stat b { display: block; font-size: 26px; }
+  .stat span { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: .05em; }
+  table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 12px; overflow: hidden; box-shadow: 0 8px 30px #0006; }
+  th, td { padding: 12px 14px; text-align: left; font-size: 14px; border-bottom: 1px solid #334155; }
+  th { background: #172033; color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+  tr:last-child td { border-bottom: none; }
+  .badge { padding: 3px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; text-transform: capitalize; }
+  .shipped { background: #1d4ed833; color: #93c5fd; }
+  .processing { background: #ca8a0433; color: #fde68a; }
+  .pending { background: #64748b33; color: #cbd5e1; }
+  .delivered { background: #15803d33; color: #86efac; }
+  .cancelled { background: #b91c1c33; color: #fca5a5; }
+  tr.flash td { animation: flash 1.5s ease; }
+  @keyframes flash { from { background: #22c55e40; } to { background: transparent; } }
+  .err { color: #fca5a5; font-size: 13px; }
+  footer { margin-top: 16px; font-size: 12px; color: #64748b; }
+  .config { margin-bottom: 18px; font-size: 13px; color: #94a3b8; }
+  .config input { background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+  #baseUrl { width: 340px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>📦 Orders — Live Dashboard</h1>
+    <div class="meta"><span class="dot" id="dot"></span> <span id="status">connecting…</span></div>
+  </header>
+
+  <div class="config">
+    API: <input id="baseUrl" value="https://oneinbox-testing.onrender.com" />
+    Token: <input id="token" value="test-token-123" style="width:160px" />
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <table>
+    <thead>
+      <tr><th>Order #</th><th>Customer</th><th>Item</th><th>Qty</th><th>Amount</th><th>Status</th><th>Est. Delivery</th></tr>
+    </thead>
+    <tbody id="rows"><tr><td colspan="7">Loading…</td></tr></tbody>
+  </table>
+
+  <footer>Auto-refreshes every 3 seconds. Any change made via the voice agent, the docs, or the API appears here automatically — no manual testing needed.</footer>
+</div>
+
+<script>
+  let prev = {};
+  const el = (id) => document.getElementById(id);
+  const badge = (s) => '<span class="badge ' + (s || '').toLowerCase() + '">' + (s || '') + '</span>';
+
+  async function load() {
+    const base = el('baseUrl').value.replace(/\/+$/, '');
+    const token = el('token').value.trim();
+    try {
+      const res = await fetch(base + '/api/public/orders', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const orders = (data.orders || []).slice().sort((a, b) => (a.order_number > b.order_number ? 1 : -1));
+
+      const counts = { processing: 0, shipped: 0, delivered: 0, cancelled: 0, pending: 0 };
+      orders.forEach(o => { if (counts[o.status] !== undefined) counts[o.status]++; });
+
+      el('stats').innerHTML =
+        '<div class="stat"><b>' + (data.count ?? orders.length) + '</b><span>Total Orders</span></div>' +
+        '<div class="stat"><b>' + (counts.pending + counts.processing) + '</b><span>In Progress</span></div>' +
+        '<div class="stat"><b>' + counts.shipped + '</b><span>Shipped</span></div>' +
+        '<div class="stat"><b>' + counts.delivered + '</b><span>Delivered</span></div>' +
+        '<div class="stat"><b>' + counts.cancelled + '</b><span>Cancelled</span></div>';
+
+      el('rows').innerHTML = orders.map(o => {
+        const sig = JSON.stringify(o);
+        const changed = prev[o.order_number] !== undefined && prev[o.order_number] !== sig;
+        return '<tr class="' + (changed ? 'flash' : '') + '">' +
+          '<td>' + o.order_number + '</td>' +
+          '<td>' + o.customer_name + '</td>' +
+          '<td>' + o.item + '</td>' +
+          '<td>' + o.quantity + '</td>' +
+          '<td>' + o.total_amount + '</td>' +
+          '<td>' + badge(o.status) + '</td>' +
+          '<td>' + o.estimated_delivery + '</td>' +
+        '</tr>';
+      }).join('') || '<tr><td colspan="7">No orders yet.</td></tr>';
+
+      const next = {};
+      orders.forEach(o => next[o.order_number] = JSON.stringify(o));
+      prev = next;
+
+      el('dot').classList.remove('off');
+      el('status').textContent = 'Live · updated ' + new Date().toLocaleTimeString();
+    } catch (e) {
+      el('dot').classList.add('off');
+      el('status').innerHTML = '<span class="err">offline: ' + e.message + '</span>';
+    }
+  }
+
+  load();
+  setInterval(load, 3000);
+</script>
+</body>
+</html>

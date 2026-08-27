@@ -26,6 +26,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import Integer, String, create_engine, select
@@ -250,6 +251,22 @@ async def _read_body(request: Request) -> dict:
 def health():
     """Simple check that the API is running. No auth required."""
     return {"status": "ok", "time": datetime.utcnow().isoformat()}
+
+
+# Load the standalone dashboard page (served read-only at /dashboard).
+try:
+    with open(os.path.join(os.path.dirname(__file__), "dashboard.html"),
+              encoding="utf-8") as _f:
+        _DASHBOARD_HTML = _f.read()
+except OSError:
+    _DASHBOARD_HTML = "<h1>Dashboard file not found.</h1>"
+
+
+@app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+def dashboard():
+    """A live, auto-refreshing dashboard of all orders. Read-only: it just polls
+    the existing /api/public/orders endpoint, so it never changes any data."""
+    return _DASHBOARD_HTML
 
 
 @app.get("/orders", response_model=OrderList,
