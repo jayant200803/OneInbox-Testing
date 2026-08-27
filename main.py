@@ -147,5 +147,12 @@ def _spoken_message(order: dict) -> str:
 
 @app.get("/orders", summary="List all orders", tags=["orders"])
 def list_orders(_: None = Depends(verify_token)):
-    """Return all orders. Requires a valid Bearer token."""
-    return {"orders": list(ORDERS.values())}
+    """Return ALL orders in one call, each with a ready-to-read message.
+    The voice agent fetches this once and reads back whichever order the
+    caller asks about. Requires a valid Bearer token."""
+    return {
+        "orders": [
+            {**order, "message": _spoken_message(order)}
+            for order in ORDERS.values()
+        ]
+    }
