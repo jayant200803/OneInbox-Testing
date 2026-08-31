@@ -471,13 +471,13 @@ class TicketRow(Base):
 
 
 SEED_TICKETS = [
-    {"ticket_id": "TKT-1001", "customer_name": "Jayant Raj", "email": "jayant@example.com",
+    {"ticket_id": "1001", "customer_name": "Jayant Raj", "email": "jayant@example.com",
      "category": "technical", "priority": "high", "subject": "App keeps crashing",
      "description": "The app crashes on login.", "status": "open"},
-    {"ticket_id": "TKT-1002", "customer_name": "Aisha Khan", "email": "aisha@example.com",
+    {"ticket_id": "1002", "customer_name": "Aisha Khan", "email": "aisha@example.com",
      "category": "billing", "priority": "urgent", "subject": "Double charged",
      "description": "I was charged twice this month.", "status": "in_progress"},
-    {"ticket_id": "TKT-1003", "customer_name": "Rohit Mehta", "email": "rohit@example.com",
+    {"ticket_id": "1003", "customer_name": "Rohit Mehta", "email": "rohit@example.com",
      "category": "general", "priority": "low", "subject": "How to change email",
      "description": "Need help updating my email address.", "status": "resolved"},
 ]
@@ -487,6 +487,17 @@ SEED_TICKETS = [
 def _init_tickets() -> None:
     Base.metadata.create_all(engine)
     with Session(engine) as db:
+        # Migration: rename existing 'TKT-1001' style ids to plain '1001'.
+        for row in db.scalars(select(TicketRow)).all():
+            if str(row.ticket_id).upper().startswith("TKT-"):
+                new_id = row.ticket_id.split("-", 1)[1]
+                if db.get(TicketRow, new_id) is None:
+                    db.execute(
+                        TicketRow.__table__.update()
+                        .where(TicketRow.ticket_id == row.ticket_id)
+                        .values(ticket_id=new_id)
+                    )
+        db.commit()
         if db.scalar(select(TicketRow).limit(1)) is None:
             db.add_all(TicketRow(**t) for t in SEED_TICKETS)
             db.commit()
@@ -536,7 +547,7 @@ class NewTicket(BaseModel):
                         description="One of: open, in_progress, resolved, closed")
     ticket_id: Optional[str] = Field(
         None, description="Optional. If omitted, the next id is assigned.",
-        examples=["TKT-1004"])
+        examples=["1004"])
 
 
 def _validate_ticket_enums(data: dict) -> None:
@@ -597,7 +608,7 @@ def _norm_ticket_id(tid: str) -> str:
     joined = "".join(out).upper().replace("TKT", "")
     digits = "".join(c for c in joined if c.isdigit())
     if digits:
-        return "TKT-" + digits
+        return digits
     return str(tid).strip().upper()
 
 
@@ -622,7 +633,7 @@ _TICKET_PARTIAL_EXAMPLE = {"status": "resolved", "priority": "low"}
 @app.get("/tickets/{ticket_id}", response_model=Ticket,
          summary="Get a support ticket", tags=["tickets"])
 def get_ticket(
-    ticket_id: str = Path(..., examples=["TKT-1001"]),
+    ticket_id: str = Path(..., examples=["1001"]),
     db: Session = Depends(get_db),
     _: None = Depends(verify_token),
 ):
@@ -682,11 +693,11 @@ async def create_ticket(
         raise HTTPException(status_code=422, detail=f"Invalid request body: {exc}")
 
     if new.ticket_id:
-        ticket_id = new.ticket_id.strip()
+        ticket_id = _norm_ticket_id(new.ticket_id)
     else:
         existing = db.scalars(select(TicketRow.ticket_id)).all()
         nums = [int(t.split("-")[-1]) for t in existing if t.split("-")[-1].isdigit()]
-        ticket_id = "TKT-" + str((max(nums) if nums else 1000) + 1)
+        ticket_id = str((max(nums) if nums else 1000) + 1)
 
     if db.get(TicketRow, ticket_id):
         raise HTTPException(status_code=409, detail=f"Ticket {ticket_id} already exists.")
@@ -710,7 +721,7 @@ TICKET_UPDATABLE = {"customer_name", "email", "category", "priority",
            openapi_extra=_body_schema(_TICKET_PARTIAL_EXAMPLE))
 async def update_ticket(
     request: Request,
-    ticket_id: str = Path(..., examples=["TKT-1001"]),
+    ticket_id: str = Path(..., examples=["1001"]),
     db: Session = Depends(get_db),
     _: None = Depends(verify_token),
 ):
@@ -732,7 +743,7 @@ async def update_ticket(
          openapi_extra=_body_schema(_TICKET_FULL_EXAMPLE))
 async def replace_ticket(
     request: Request,
-    ticket_id: str = Path(..., examples=["TKT-1001"]),
+    ticket_id: str = Path(..., examples=["1001"]),
     db: Session = Depends(get_db),
     _: None = Depends(verify_token),
 ):
@@ -760,7 +771,7 @@ async def replace_ticket(
 @app.delete("/api/public/tickets/{ticket_id}",
             summary="Delete a ticket", tags=["tickets"])
 def delete_ticket(
-    ticket_id: str = Path(..., examples=["TKT-1001"]),
+    ticket_id: str = Path(..., examples=["1001"]),
     db: Session = Depends(get_db),
     _: None = Depends(verify_token),
 ):
