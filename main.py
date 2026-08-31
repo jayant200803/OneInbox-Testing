@@ -557,6 +557,17 @@ def _validate_ticket_enums(data: dict) -> None:
         data["email"] = "not-provided@example.com"
 
 
+def _norm_ticket_id(tid: str) -> str:
+    """Normalise spoken/typed ticket ids so 'tkt 1001', 'TKT1001', '1001'
+    all resolve to 'TKT-1001'."""
+    t = str(tid).strip().upper().replace(" ", "").replace("_", "-")
+    if t.isdigit():
+        return "TKT-" + t
+    if t.startswith("TKT") and not t.startswith("TKT-"):
+        t = "TKT-" + t[3:]
+    return t
+
+
 def _ticket_message(t: dict) -> str:
     return (f"Ticket {t['ticket_id']} ({t['priority']} priority, {t['category']}) "
             f"for {t['customer_name']} is currently {t['status']}: {t['subject']}.")
@@ -583,7 +594,7 @@ def get_ticket(
     _: None = Depends(verify_token),
 ):
     """Return a single ticket by its ID. Requires a valid Bearer token."""
-    row = db.get(TicketRow, ticket_id.strip())
+    row = db.get(TicketRow, _norm_ticket_id(ticket_id))
     if not row:
         raise HTTPException(status_code=404, detail="Ticket not found")
     return _ticket_with_message(_ticket_to_dict(row))
@@ -649,7 +660,7 @@ async def update_ticket(
     _: None = Depends(verify_token),
 ):
     """Update one or more fields of a ticket. Only the fields you send change."""
-    row = db.get(TicketRow, ticket_id.strip())
+    row = db.get(TicketRow, _norm_ticket_id(ticket_id))
     if not row:
         raise HTTPException(status_code=404, detail="Ticket not found")
     data = await _read_body(request)
@@ -671,7 +682,7 @@ async def replace_ticket(
     _: None = Depends(verify_token),
 ):
     """Replace the whole ticket with the fields you send."""
-    row = db.get(TicketRow, ticket_id.strip())
+    row = db.get(TicketRow, _norm_ticket_id(ticket_id))
     if not row:
         raise HTTPException(status_code=404, detail="Ticket not found")
     data = await _read_body(request)
@@ -699,7 +710,7 @@ def delete_ticket(
     _: None = Depends(verify_token),
 ):
     """Delete a ticket by its ID. Requires a valid Bearer token."""
-    row = db.get(TicketRow, ticket_id.strip())
+    row = db.get(TicketRow, _norm_ticket_id(ticket_id))
     if not row:
         raise HTTPException(status_code=404, detail="Ticket not found")
     db.delete(row)
