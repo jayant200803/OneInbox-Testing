@@ -739,6 +739,13 @@ async def update_ticket(
     if not row:
         raise HTTPException(status_code=404, detail="Ticket not found")
     data = await _read_body(request)
+    # Drop blank / unreplaced-placeholder fields so sending a full template while
+    # changing only one field never wipes or mis-sets the others.
+    data = {
+        k: v for k, v in data.items()
+        if not (v is None or (isinstance(v, str) and
+                (v.strip() == "" or (v.strip().startswith("{{") and v.strip().endswith("}}")))))
+    }
     _validate_ticket_enums(data)
     for key, value in data.items():
         if key in TICKET_UPDATABLE:
