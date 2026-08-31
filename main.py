@@ -425,3 +425,264 @@ def delete_order(
         "order_number": order_number.strip(),
         "message": f"Order {order_number.strip()} has been deleted.",
     }
+
+
+# ===========================================================================
+# FRESH API: Support Tickets  (added alongside orders — nothing above changes)
+# ===========================================================================
+# Richer parameters / validation for testing:
+#   category : enum (billing | technical | general | complaint)
+#   priority : enum (low | medium | high | urgent)
+#   status   : enum (open | in_progress | resolved | closed)
+#   email    : must contain "@"
+#   subject  : 3..120 chars
+TICKET_CATEGORIES = {"billing", "technical", "general", "complaint"}
+TICKET_PRIORITIES = {"low", "medium", "high", "urgent"}
+TICKET_STATUSES = {"open", "in_progress", "resolved", "closed"}
+
+
+class TicketRow(Base):
+    __tablename__ = "tickets"
+
+    ticket_id: Mapped[str] = mapped_column(String, primary_key=True)
+    customer_name: Mapped[str] = mapped_column(String, default="")
+    email: Mapped[str] = mapped_column(String, default="")
+    category: Mapped[str] = mapped_column(String, default="general")
+    priority: Mapped[str] = mapped_column(String, default="medium")
+    subject: Mapped[str] = mapped_column(String, default="")
+    description: Mapped[str] = mapped_column(String, default="")
+    status: Mapped[str] = mapped_column(String, default="open")
+
+
+SEED_TICKETS = [
+    {"ticket_id": "TKT-1001", "customer_name": "Jayant Raj", "email": "jayant@example.com",
+     "category": "technical", "priority": "high", "subject": "App keeps crashing",
+     "description": "The app crashes on login.", "status": "open"},
+    {"ticket_id": "TKT-1002", "customer_name": "Aisha Khan", "email": "aisha@example.com",
+     "category": "billing", "priority": "urgent", "subject": "Double charged",
+     "description": "I was charged twice this month.", "status": "in_progress"},
+    {"ticket_id": "TKT-1003", "customer_name": "Rohit Mehta", "email": "rohit@example.com",
+     "category": "general", "priority": "low", "subject": "How to change email",
+     "description": "Need help updating my email address.", "status": "resolved"},
+]
+
+
+@app.on_event("startup")
+def _init_tickets() -> None:
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        if db.scalar(select(TicketRow).limit(1)) is None:
+            db.add_all(TicketRow(**t) for t in SEED_TICKETS)
+            db.commit()
+
+
+def _ticket_to_dict(row: TicketRow) -> dict:
+    return {
+        "ticket_id": row.ticket_id,
+        "customer_name": row.customer_name,
+        "email": row.email,
+        "category": row.category,
+        "priority": row.priority,
+        "subject": row.subject,
+        "description": row.description,
+        "status": row.status,
+    }
+
+
+class Ticket(BaseModel):
+    ticket_id: str
+    customer_name: str
+    email: str
+    category: str
+    priority: str
+    subject: str
+    description: str = ""
+    status: str
+    message: str
+
+
+class TicketList(BaseModel):
+    tickets: list[Ticket]
+    count: int = 0
+
+
+class NewTicket(BaseModel):
+    customer_name: str = Field(..., min_length=1, examples=["Jayant Raj"])
+    email: str = Field(..., examples=["jayant@example.com"])
+    category: str = Field(..., examples=["technical"],
+                          description="One of: billing, technical, general, complaint")
+    priority: str = Field("medium", examples=["high"],
+                          description="One of: low, medium, high, urgent")
+    subject: str = Field(..., min_length=3, max_length=120,
+                         examples=["App keeps crashing"])
+    description: str = Field("", examples=["The app crashes on login."])
+    status: str = Field("open", examples=["open"],
+                        description="One of: open, in_progress, resolved, closed")
+    ticket_id: Optional[str] = Field(
+        None, description="Optional. If omitted, the next id is assigned.",
+        examples=["TKT-1004"])
+
+
+def _validate_ticket_enums(data: dict) -> None:
+    if "category" in data and data["category"] not in TICKET_CATEGORIES:
+        raise HTTPException(status_code=400,
+                            detail=f"Invalid category. Valid: {sorted(TICKET_CATEGORIES)}")
+    if "priority" in data and data["priority"] not in TICKET_PRIORITIES:
+        raise HTTPException(status_code=400,
+                            detail=f"Invalid priority. Valid: {sorted(TICKET_PRIORITIES)}")
+    if "status" in data and data["status"] not in TICKET_STATUSES:
+        raise HTTPException(status_code=400,
+                            detail=f"Invalid status. Valid: {sorted(TICKET_STATUSES)}")
+    if "email" in data and "@" not in str(data["email"]):
+        raise HTTPException(status_code=400, detail="Invalid email address.")
+
+
+def _ticket_message(t: dict) -> str:
+    return (f"Ticket {t['ticket_id']} ({t['priority']} priority, {t['category']}) "
+            f"for {t['customer_name']} is currently {t['status']}: {t['subject']}.")
+
+
+def _ticket_with_message(t: dict) -> dict:
+    return {**t, "message": _ticket_message(t)}
+
+
+_TICKET_FULL_EXAMPLE = {
+    "customer_name": "Neha Sharma", "email": "neha@example.com",
+    "category": "billing", "priority": "high",
+    "subject": "Refund not received", "description": "Refund pending 10 days.",
+    "status": "open",
+}
+_TICKET_PARTIAL_EXAMPLE = {"status": "resolved", "priority": "low"}
+
+
+@app.get("/tickets/{ticket_id}", response_model=Ticket,
+         summary="Get a support ticket", tags=["tickets"])
+def get_ticket(
+    ticket_id: str = Path(..., examples=["TKT-1001"]),
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_token),
+):
+    """Return a single ticket by its ID. Requires a valid Bearer token."""
+    row = db.get(TicketRow, ticket_id.strip())
+    if not row:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    return _ticket_with_message(_ticket_to_dict(row))
+
+
+@app.get("/api/public/tickets", response_model=TicketList,
+         summary="List all support tickets", tags=["tickets"])
+def list_tickets(db: Session = Depends(get_db), _: None = Depends(verify_token)):
+    """Return ALL tickets. Requires a valid Bearer token."""
+    rows = db.scalars(select(TicketRow)).all()
+    tickets = [_ticket_with_message(_ticket_to_dict(r)) for r in rows]
+    return {"tickets": tickets, "count": len(tickets)}
+
+
+@app.post("/api/public/tickets", response_model=Ticket, status_code=201,
+          summary="Create a support ticket", tags=["tickets"],
+          openapi_extra=_body_schema(_TICKET_FULL_EXAMPLE))
+async def create_ticket(
+    request: Request,
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_token),
+):
+    """Create a support ticket. Required: customer_name, email, category, subject.
+    Optional: priority (default medium), description, status (default open)."""
+    data = await _read_body(request)
+    _validate_ticket_enums(data)
+    try:
+        new = NewTicket(**data)
+    except (TypeError, ValidationError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid request body: {exc}")
+
+    if new.ticket_id:
+        ticket_id = new.ticket_id.strip()
+    else:
+        existing = db.scalars(select(TicketRow.ticket_id)).all()
+        nums = [int(t.split("-")[-1]) for t in existing if t.split("-")[-1].isdigit()]
+        ticket_id = "TKT-" + str((max(nums) if nums else 1000) + 1)
+
+    if db.get(TicketRow, ticket_id):
+        raise HTTPException(status_code=409, detail=f"Ticket {ticket_id} already exists.")
+
+    row = TicketRow(
+        ticket_id=ticket_id, customer_name=new.customer_name, email=new.email,
+        category=new.category, priority=new.priority, subject=new.subject,
+        description=new.description, status=new.status,
+    )
+    db.add(row)
+    db.commit()
+    return _ticket_with_message(_ticket_to_dict(row))
+
+
+TICKET_UPDATABLE = {"customer_name", "email", "category", "priority",
+                    "subject", "description", "status"}
+
+
+@app.patch("/api/public/tickets/{ticket_id}", response_model=Ticket,
+           summary="Update part of a ticket", tags=["tickets"],
+           openapi_extra=_body_schema(_TICKET_PARTIAL_EXAMPLE))
+async def update_ticket(
+    request: Request,
+    ticket_id: str = Path(..., examples=["TKT-1001"]),
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_token),
+):
+    """Update one or more fields of a ticket. Only the fields you send change."""
+    row = db.get(TicketRow, ticket_id.strip())
+    if not row:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    data = await _read_body(request)
+    _validate_ticket_enums(data)
+    for key, value in data.items():
+        if key in TICKET_UPDATABLE:
+            setattr(row, key, value)
+    db.commit()
+    return _ticket_with_message(_ticket_to_dict(row))
+
+
+@app.put("/api/public/tickets/{ticket_id}", response_model=Ticket,
+         summary="Replace a ticket", tags=["tickets"],
+         openapi_extra=_body_schema(_TICKET_FULL_EXAMPLE))
+async def replace_ticket(
+    request: Request,
+    ticket_id: str = Path(..., examples=["TKT-1001"]),
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_token),
+):
+    """Replace the whole ticket with the fields you send."""
+    row = db.get(TicketRow, ticket_id.strip())
+    if not row:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    data = await _read_body(request)
+    _validate_ticket_enums(data)
+    try:
+        new = NewTicket(**data)
+    except (TypeError, ValidationError) as exc:
+        raise HTTPException(status_code=422, detail=f"Invalid request body: {exc}")
+    row.customer_name = new.customer_name
+    row.email = new.email
+    row.category = new.category
+    row.priority = new.priority
+    row.subject = new.subject
+    row.description = new.description
+    row.status = new.status
+    db.commit()
+    return _ticket_with_message(_ticket_to_dict(row))
+
+
+@app.delete("/api/public/tickets/{ticket_id}",
+            summary="Delete a ticket", tags=["tickets"])
+def delete_ticket(
+    ticket_id: str = Path(..., examples=["TKT-1001"]),
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_token),
+):
+    """Delete a ticket by its ID. Requires a valid Bearer token."""
+    row = db.get(TicketRow, ticket_id.strip())
+    if not row:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    db.delete(row)
+    db.commit()
+    return {"ticket_id": ticket_id.strip(),
+            "message": f"Ticket {ticket_id.strip()} has been deleted."}
