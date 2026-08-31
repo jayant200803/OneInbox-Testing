@@ -248,9 +248,16 @@ async def _read_body(request: Request) -> dict:
 # Endpoints
 # ---------------------------------------------------------------------------
 @app.get("/health", summary="Health check", tags=["system"])
-def health():
-    """Simple check that the API is running. No auth required."""
-    return {"status": "ok", "time": datetime.utcnow().isoformat()}
+def health(db: Session = Depends(get_db)):
+    """Simple check that the API (and database) is running. No auth required.
+    Touches the DB with a trivial query so an uptime ping keeps both the web
+    service and the Neon database warm (avoids cold-start timeouts)."""
+    try:
+        db.execute(select(1))
+        db_ok = True
+    except Exception:
+        db_ok = False
+    return {"status": "ok", "db": db_ok, "time": datetime.utcnow().isoformat()}
 
 
 # Load the standalone dashboard page (served read-only at /dashboard).
