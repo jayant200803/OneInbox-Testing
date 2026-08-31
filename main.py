@@ -516,13 +516,13 @@ class TicketList(BaseModel):
 
 
 class NewTicket(BaseModel):
-    customer_name: str = Field(..., min_length=1, examples=["Jayant Raj"])
-    email: str = Field(..., examples=["jayant@example.com"])
-    category: str = Field(..., examples=["technical"],
+    customer_name: str = Field("Caller", examples=["Jayant Raj"])
+    email: str = Field("not-provided@example.com", examples=["jayant@example.com"])
+    category: str = Field("general", examples=["technical"],
                           description="One of: billing, technical, general, complaint")
     priority: str = Field("medium", examples=["high"],
                           description="One of: low, medium, high, urgent")
-    subject: str = Field(..., min_length=3, max_length=120,
+    subject: str = Field(..., min_length=1, max_length=200,
                          examples=["App keeps crashing"])
     description: str = Field("", examples=["The app crashes on login."])
     status: str = Field("open", examples=["open"],
@@ -533,17 +533,28 @@ class NewTicket(BaseModel):
 
 
 def _validate_ticket_enums(data: dict) -> None:
-    if "category" in data and data["category"] not in TICKET_CATEGORIES:
-        raise HTTPException(status_code=400,
-                            detail=f"Invalid category. Valid: {sorted(TICKET_CATEGORIES)}")
-    if "priority" in data and data["priority"] not in TICKET_PRIORITIES:
-        raise HTTPException(status_code=400,
-                            detail=f"Invalid priority. Valid: {sorted(TICKET_PRIORITIES)}")
-    if "status" in data and data["status"] not in TICKET_STATUSES:
-        raise HTTPException(status_code=400,
-                            detail=f"Invalid status. Valid: {sorted(TICKET_STATUSES)}")
-    if "email" in data and "@" not in str(data["email"]):
-        raise HTTPException(status_code=400, detail="Invalid email address.")
+    """Be forgiving: map anything the agent says to a valid value instead of
+    rejecting, so natural speech ('non-technical', empty priority, no email)
+    never fails the call. Only truly needs a subject."""
+    if "category" in data and str(data["category"]).lower() not in TICKET_CATEGORIES:
+        c = str(data["category"]).lower()
+        if c.startswith("non") or "general" in c or "question" in c:
+            data["category"] = "general"
+        elif "bill" in c or "charge" in c or "refund" in c or "payment" in c:
+            data["category"] = "billing"
+        elif "tech" in c or "bug" in c or "error" in c or "login" in c:
+            data["category"] = "technical"
+        elif "complain" in c or "rude" in c:
+            data["category"] = "complaint"
+        else:
+            data["category"] = "general"
+    if "priority" in data and str(data["priority"]).lower() not in TICKET_PRIORITIES:
+        data["priority"] = "medium"
+    if "status" in data and str(data["status"]).lower() not in TICKET_STATUSES:
+        data["status"] = "open"
+    if "email" in data and "@" not in str(data.get("email", "")):
+        # Missing / spoken-wrong email -> store a placeholder instead of failing.
+        data["email"] = "not-provided@example.com"
 
 
 def _ticket_message(t: dict) -> str:
