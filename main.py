@@ -566,10 +566,19 @@ def _validate_ticket_enums(data: dict) -> None:
             data["category"] = "complaint"
         else:
             data["category"] = "general"
-    if "priority" in data and str(data["priority"]).lower() not in TICKET_PRIORITIES:
-        data["priority"] = "medium"
-    if "status" in data and str(data["status"]).lower() not in TICKET_STATUSES:
-        data["status"] = "open"
+    if "priority" in data:
+        p = str(data["priority"]).strip().lower()
+        data["priority"] = p if p in TICKET_PRIORITIES else "medium"
+    if "status" in data:
+        # 'in progress' / 'In Progress' -> 'in_progress'; unknown -> keep as open.
+        s = str(data["status"]).strip().lower().replace(" ", "_").replace("-", "_")
+        if s in ("inprogress", "progress", "working", "wip"):
+            s = "in_progress"
+        if s in ("closed", "close", "done", "complete", "completed"):
+            s = "closed"
+        if s in ("resolved", "resolve", "fixed", "sorted"):
+            s = "resolved"
+        data["status"] = s if s in TICKET_STATUSES else "open"
     if "email" in data and "@" not in str(data.get("email", "")):
         # Missing / spoken-wrong email -> store a placeholder instead of failing.
         data["email"] = "not-provided@example.com"
