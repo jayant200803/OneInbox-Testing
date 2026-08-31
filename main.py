@@ -564,15 +564,41 @@ def _validate_ticket_enums(data: dict) -> None:
         data["email"] = "not-provided@example.com"
 
 
+_NUM_WORDS = {
+    "zero": "0", "oh": "0", "o": "0", "one": "1", "two": "2", "three": "3",
+    "four": "4", "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
+}
+
+
 def _norm_ticket_id(tid: str) -> str:
-    """Normalise spoken/typed ticket ids so 'tkt 1001', 'TKT1001', '1001'
-    all resolve to 'TKT-1001'."""
-    t = str(tid).strip().upper().replace(" ", "").replace("_", "-")
-    if t.isdigit():
-        return "TKT-" + t
-    if t.startswith("TKT") and not t.startswith("TKT-"):
-        t = "TKT-" + t[3:]
-    return t
+    """Normalise spoken/typed ticket ids to 'TKT-<digits>'.
+    Handles messy speech-to-text like 'one double oh one', '1, double 0, 1',
+    'tkt 1001', 'TKT1001', '1001'  ->  'TKT-1001'."""
+    s = str(tid).strip().lower()
+    for ch in (",", "-", "_", ".", "#"):
+        s = s.replace(ch, " ")
+    tokens = s.split()
+    out = []
+    i = 0
+    while i < len(tokens):
+        t = tokens[i]
+        # "double 0" / "triple five" -> repeat the next digit
+        if t in ("double", "triple") and i + 1 < len(tokens):
+            nxt = tokens[i + 1]
+            digit = _NUM_WORDS.get(nxt, nxt)
+            out.append(digit * (2 if t == "double" else 3))
+            i += 2
+            continue
+        if t in _NUM_WORDS:
+            out.append(_NUM_WORDS[t])
+        else:
+            out.append(t)
+        i += 1
+    joined = "".join(out).upper().replace("TKT", "")
+    digits = "".join(c for c in joined if c.isdigit())
+    if digits:
+        return "TKT-" + digits
+    return str(tid).strip().upper()
 
 
 def _ticket_message(t: dict) -> str:
