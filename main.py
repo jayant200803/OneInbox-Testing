@@ -24,7 +24,7 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Path, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -609,10 +609,32 @@ def get_ticket(
 
 @app.get("/api/public/tickets", response_model=TicketList,
          summary="List all support tickets", tags=["tickets"])
-def list_tickets(db: Session = Depends(get_db), _: None = Depends(verify_token)):
-    """Return ALL tickets. Requires a valid Bearer token."""
+def list_tickets(
+    status: Optional[str] = Query(
+        None, description="Optional filter, e.g. open, in_progress, resolved, closed",
+        examples=["open"]),
+    category: Optional[str] = Query(None, examples=["billing"]),
+    priority: Optional[str] = Query(None, examples=["high"]),
+    db: Session = Depends(get_db),
+    _: None = Depends(verify_token),
+):
+    """Return tickets, optionally filtered by status, category, or priority.
+    Example: /api/public/tickets?status=open  -> only open tickets.
+    Requires a valid Bearer token."""
     rows = db.scalars(select(TicketRow)).all()
     tickets = [_ticket_with_message(_ticket_to_dict(r)) for r in rows]
+    # 'open' spoken naturally may arrive as 'open ticket' etc. — match loosely.
+    def _norm(v: str) -> str:
+        return str(v).strip().lower().replace(" ", "_")
+    if status:
+        want = _norm(status)
+        tickets = [t for t in tickets if _norm(t["status"]) == want]
+    if category:
+        want = _norm(category)
+        tickets = [t for t in tickets if _norm(t["category"]) == want]
+    if priority:
+        want = _norm(priority)
+        tickets = [t for t in tickets if _norm(t["priority"]) == want]
     return {"tickets": tickets, "count": len(tickets)}
 
 
