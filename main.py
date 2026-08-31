@@ -367,13 +367,22 @@ async def update_order(
         raise HTTPException(status_code=404, detail="Order not found")
     data = await _read_body(request)
     for key, value in data.items():
-        if key in UPDATABLE_FIELDS:
-            if key == "quantity":
-                try:
-                    value = int(value)
-                except (TypeError, ValueError):
-                    continue
-            setattr(row, key, value)
+        if key not in UPDATABLE_FIELDS:
+            continue
+        # Ignore blank / unreplaced-placeholder values so a partial update never
+        # wipes existing data (e.g. agent sends empty {{item}} while changing status).
+        if value is None:
+            continue
+        if isinstance(value, str):
+            v = value.strip()
+            if v == "" or (v.startswith("{{") and v.endswith("}}")):
+                continue
+        if key == "quantity":
+            try:
+                value = int(value)
+            except (TypeError, ValueError):
+                continue
+        setattr(row, key, value)
     db.commit()
     return _with_message(_row_to_dict(row))
 
