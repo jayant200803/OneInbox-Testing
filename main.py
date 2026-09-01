@@ -576,7 +576,18 @@ def _validate_ticket_enums(data: dict) -> None:
             data["category"] = "general"
     if "priority" in data:
         p = str(data["priority"]).strip().lower()
-        data["priority"] = p if p in TICKET_PRIORITIES else "medium"
+        if p in TICKET_PRIORITIES:
+            pass
+        elif "not urgent" in p or "no rush" in p or "low" in p or "whenever" in p:
+            p = "low"
+        elif any(w in p for w in ("urgent", "asap", "immediate", "critical",
+                                  "emergency", "right away")):
+            p = "urgent"
+        elif "high" in p:
+            p = "high"
+        else:
+            p = "medium"
+        data["priority"] = p
     if "status" in data:
         # 'in progress' / 'In Progress' -> 'in_progress'; unknown -> keep as open.
         s = str(data["status"]).strip().lower().replace(" ", "_").replace("-", "_")
