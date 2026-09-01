@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, Request, status
@@ -29,7 +29,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import Integer, String, create_engine, select
+from sqlalchemy import DateTime, Integer, String, create_engine, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 app = FastAPI(
@@ -468,6 +468,7 @@ class TicketRow(Base):
     subject: Mapped[str] = mapped_column(String, default="")
     description: Mapped[str] = mapped_column(String, default="")
     status: Mapped[str] = mapped_column(String, default="open")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 SEED_TICKETS = [
@@ -487,6 +488,12 @@ SEED_TICKETS = [
 def _init_tickets() -> None:
     Base.metadata.create_all(engine)
     with Session(engine) as db:
+        # Migration: add created_at column to older tables that predate it.
+        try:
+            db.execute(text("ALTER TABLE tickets ADD COLUMN created_at TIMESTAMP"))
+            db.commit()
+        except Exception:
+            db.rollback()
         # Migration: rename existing 'TKT-1001' style ids to plain '1001'.
         for row in db.scalars(select(TicketRow)).all():
             if str(row.ticket_id).upper().startswith("TKT-"):
@@ -712,6 +719,21 @@ async def create_ticket(
         new = NewTicket(**data)
     except (TypeError, ValidationError) as exc:
         raise HTTPException(status_code=422, detail=f"Invalid request body: {exc}")
+
+    # Idempotency guard: if an identical ticket (same email + subject + name) was
+    # created in the last 120s, return it instead of making a duplicate. This
+    # makes a double-fired POST safe -> Create effectively runs once.
+    cutoff = datetime.utcnow() - timedelta(seconds=120)
+    dup = db.scalars(
+        select(TicketRow).where(
+            TicketRow.email == new.email,
+            TicketRow.subject == new.subject,
+            TicketRow.customer_name == new.customer_name,
+        )
+    ).all()
+    for r in dup:
+        if r.created_at is None or r.created_at >= cutoff:
+            return _ticket_with_message(_ticket_to_dict(r))
 
     if new.ticket_id:
         ticket_id = _norm_ticket_id(new.ticket_id)
