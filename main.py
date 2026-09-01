@@ -574,6 +574,22 @@ def _validate_ticket_enums(data: dict) -> None:
             data["category"] = "complaint"
         else:
             data["category"] = "general"
+    # If category is missing or generic, infer it from the subject/description
+    # so 'I was charged twice' -> billing, 'can't log in' -> technical, etc.
+    if str(data.get("category", "general")).lower() in ("", "general"):
+        blob = (str(data.get("subject", "")) + " " +
+                str(data.get("description", ""))).lower()
+        if blob.strip():
+            if any(w in blob for w in ("charge", "charged", "bill", "payment",
+                                       "refund", "invoice", "overcharg", "money")):
+                data["category"] = "billing"
+            elif any(w in blob for w in ("login", "log in", "log-in", "password",
+                                         "crash", "error", "bug", "not working",
+                                         "can't access", "cannot access")):
+                data["category"] = "technical"
+            elif any(w in blob for w in ("rude", "complaint", "unhappy", "worst",
+                                         "terrible", "disappoint")):
+                data["category"] = "complaint"
     if "priority" in data:
         p = str(data["priority"]).strip().lower()
         if p in TICKET_PRIORITIES:
