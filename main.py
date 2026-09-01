@@ -531,6 +531,7 @@ class Ticket(BaseModel):
 class TicketList(BaseModel):
     tickets: list[Ticket]
     count: int = 0
+    summary: str = ""
 
 
 class NewTicket(BaseModel):
@@ -681,7 +682,18 @@ def list_tickets(
     if priority:
         want = _norm(priority)
         tickets = [t for t in tickets if _norm(t["priority"]) == want]
-    return {"tickets": tickets, "count": len(tickets)}
+
+    # Single spoken-friendly sentence the agent can read for "show all tickets".
+    from collections import Counter
+    by_status = Counter(t["status"] for t in tickets)
+    ids = ", ".join(t["ticket_id"] for t in tickets)
+    n = len(tickets)
+    if n == 0:
+        summary = "There are no tickets."
+    else:
+        parts = ", ".join(f"{c} {s.replace('_', ' ')}" for s, c in by_status.items())
+        summary = f"There are {n} tickets ({parts}). Ticket numbers: {ids}."
+    return {"tickets": tickets, "count": n, "summary": summary}
 
 
 @app.post("/api/public/tickets", response_model=Ticket, status_code=201,
