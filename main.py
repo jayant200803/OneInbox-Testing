@@ -847,7 +847,8 @@ async def replace_ticket(
 
 @app.delete("/api/public/tickets/{ticket_id}",
             summary="Delete a ticket", tags=["tickets"])
-def delete_ticket(
+async def delete_ticket(
+    request: Request,
     ticket_id: str = Path(..., examples=["1001"]),
     confirm: Optional[str] = Query(
         None, description="Must be 'yes' to actually delete. Anything else = no delete.",
@@ -855,13 +856,21 @@ def delete_ticket(
     db: Session = Depends(get_db),
     _: None = Depends(verify_token),
 ):
-    """Delete a ticket by its ID. SAFETY: only deletes when confirm=yes is passed;
-    otherwise the ticket is kept. This prevents accidental deletion when the caller
-    hasn't clearly confirmed. Requires a valid Bearer token."""
+    """Delete a ticket by its ID. SAFETY: only deletes when confirm=yes is passed
+    (via query OR body); otherwise the ticket is kept. Prevents accidental deletion
+    when the caller hasn't clearly confirmed. Requires a valid Bearer token."""
     tid = _norm_ticket_id(ticket_id)
     row = db.get(TicketRow, tid)
     if not row:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    # Accept confirm from query OR JSON body.
+    if not confirm:
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                confirm = body.get("confirm")
+        except Exception:
+            confirm = None
     if str(confirm).strip().lower() not in ("yes", "y", "true", "confirmed", "confirm"):
         # No explicit confirmation -> DO NOT delete.
         return {
