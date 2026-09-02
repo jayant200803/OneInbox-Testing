@@ -849,14 +849,28 @@ async def replace_ticket(
             summary="Delete a ticket", tags=["tickets"])
 def delete_ticket(
     ticket_id: str = Path(..., examples=["1001"]),
+    confirm: Optional[str] = Query(
+        None, description="Must be 'yes' to actually delete. Anything else = no delete.",
+        examples=["yes"]),
     db: Session = Depends(get_db),
     _: None = Depends(verify_token),
 ):
-    """Delete a ticket by its ID. Requires a valid Bearer token."""
-    row = db.get(TicketRow, _norm_ticket_id(ticket_id))
+    """Delete a ticket by its ID. SAFETY: only deletes when confirm=yes is passed;
+    otherwise the ticket is kept. This prevents accidental deletion when the caller
+    hasn't clearly confirmed. Requires a valid Bearer token."""
+    tid = _norm_ticket_id(ticket_id)
+    row = db.get(TicketRow, tid)
     if not row:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    if str(confirm).strip().lower() not in ("yes", "y", "true", "confirmed", "confirm"):
+        # No explicit confirmation -> DO NOT delete.
+        return {
+            "ticket_id": row.ticket_id,
+            "deleted": False,
+            "message": (f"Ticket {row.ticket_id} was NOT deleted because deletion "
+                        "was not confirmed. To delete, confirm with the caller first."),
+        }
     db.delete(row)
     db.commit()
-    return {"ticket_id": ticket_id.strip(),
-            "message": f"Ticket {ticket_id.strip()} has been deleted."}
+    return {"ticket_id": tid, "deleted": True,
+            "message": f"Ticket {tid} has been deleted."}
