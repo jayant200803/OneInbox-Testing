@@ -730,17 +730,27 @@ def list_tickets(
     return {"tickets": tickets, "count": n, "summary": summary}
 
 
-@app.post("/api/public/tickets", response_model=Ticket, status_code=201,
+@app.post("/api/public/tickets", status_code=201,
           summary="Create a support ticket", tags=["tickets"],
-          openapi_extra=_body_schema(_TICKET_FULL_EXAMPLE))
+          openapi_extra=_body_schema({**_TICKET_FULL_EXAMPLE, "confirm": "yes"}))
 async def create_ticket(
     request: Request,
     db: Session = Depends(get_db),
     _: None = Depends(verify_token),
 ):
     """Create a support ticket. Required: customer_name, email, category, subject.
-    Optional: priority (default medium), description, status (default open)."""
+    Optional: priority (default medium), description, status (default open).
+    SAFETY: only creates when confirm=yes is passed; otherwise nothing is created.
+    This prevents accidental creation when the caller hasn't confirmed."""
     data = await _read_body(request)
+    # Confirmation gate: do not create unless the caller confirmed.
+    confirm = str(data.get("confirm", "")).strip().lower()
+    if confirm not in ("yes", "y", "true", "confirmed", "confirm"):
+        return {
+            "created": False,
+            "message": ("Ticket was NOT created because creation was not confirmed. "
+                        "Confirm with the caller first, then set confirm to yes."),
+        }
     _validate_ticket_enums(data)
     try:
         new = NewTicket(**data)
@@ -760,7 +770,7 @@ async def create_ticket(
     ).all()
     for r in dup:
         if r.created_at is None or r.created_at >= cutoff:
-            return _ticket_with_message(_ticket_to_dict(r))
+            return {**_ticket_with_message(_ticket_to_dict(r)), "created": True}
 
     if new.ticket_id:
         ticket_id = _norm_ticket_id(new.ticket_id)
@@ -779,7 +789,7 @@ async def create_ticket(
     )
     db.add(row)
     db.commit()
-    return _ticket_with_message(_ticket_to_dict(row))
+    return {**_ticket_with_message(_ticket_to_dict(row)), "created": True}
 
 
 TICKET_UPDATABLE = {"customer_name", "email", "category", "priority",
