@@ -735,7 +735,6 @@ def list_tickets(
           openapi_extra=_body_schema({**_TICKET_FULL_EXAMPLE, "confirm": "yes"}))
 async def create_ticket(
     request: Request,
-    simulate: Optional[str] = Query(None, description="Set to 'fail' to force an error (for testing failure handling)."),
     db: Session = Depends(get_db),
     _: None = Depends(verify_token),
 ):
@@ -743,8 +742,6 @@ async def create_ticket(
     Optional: priority (default medium), description, status (default open).
     SAFETY: only creates when confirm=yes is passed; otherwise nothing is created.
     This prevents accidental creation when the caller hasn't confirmed."""
-    if str(simulate).strip().lower() == "fail":
-        raise HTTPException(status_code=503, detail="Service temporarily unavailable (simulated failure).")
     data = await _read_body(request)
     # Confirmation gate: do not create unless the caller confirmed.
     confirm = str(data.get("confirm", "")).strip().lower()
@@ -866,15 +863,12 @@ async def delete_ticket(
     confirm: Optional[str] = Query(
         None, description="Must be 'yes' to actually delete. Anything else = no delete.",
         examples=["yes"]),
-    simulate: Optional[str] = Query(None, description="Set to 'fail' to force an error (for testing failure handling)."),
     db: Session = Depends(get_db),
     _: None = Depends(verify_token),
 ):
     """Delete a ticket by its ID. SAFETY: only deletes when confirm=yes is passed
     (via query OR body); otherwise the ticket is kept. Prevents accidental deletion
     when the caller hasn't clearly confirmed. Requires a valid Bearer token."""
-    if str(simulate).strip().lower() == "fail":
-        raise HTTPException(status_code=503, detail="Service temporarily unavailable (simulated failure).")
     tid = _norm_ticket_id(ticket_id)
     row = db.get(TicketRow, tid)
     if not row:
